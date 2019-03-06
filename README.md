@@ -31,7 +31,7 @@ Most of the patterns presented below try to use this restricted data model to ou
 4. Optimistic Locking: Avoid race conditions by using a version attribute and conditional writes
 5. Historic: Stream all writes to another append only dynamo table
 
-### Aggregator
+### 1 Aggregator
 
 **Motivation**: Imagine you have a stream of user events, and you would like to trigger some processing on those events
 when the collection is a certain size or contains certain data. 
@@ -60,7 +60,7 @@ Until Dynamo introduces some sort of conditional streaming logic there is no way
 2. Although we have the data persisted in dynamo, it is very hard to actually query the table for unmatched/incomplete sets because
 of the limitations with scan. Perhaps you could get around this with an index. 
 
-### Periodic Aggregator
+### 2 Periodic Aggregator
 
 **Motivation**: You want to aggregate data that arrives in a certain time period and process that.  
 
@@ -80,3 +80,26 @@ send an email every hour rather than on every event so that they don't start to 
 1. The maximum item size in DynamoDB is [400 KB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items) so if you plan on aggregating a lot of data
 in your time interval this won't work. In that case you could use a secondary table for the data and this table just to store references to it. 
 
+### 3 Processor
+
+**Motivation**: You want to process events with lambda, but you want to keep track of the state in case of failures/timeouts etc. 
+
+**Implementation**: You create an item in dynamo for each unit of work,and a lambda is triggered from the stream to do the work. If the lambda times-out, and has only partially
+completed the work it writes back it's progress to the dynamo entry. That in turn triggers the lambda and it knows where it left off last time. 
+
+**Example**: 
+1. You want to stream every row (with a bit processing) from a redshift table to a kinesis stream for some reason. 
+You trigger an UNLOAD from redshift to S3 with a manifest file. A lambda function is triggered by the manifest file, 
+which reads the contents and writes an item in a dynamo table with the file name, number of bytes. 
+Another lambda is trigger by this dynamo entry, streams the file from s3 and before it times out writes back to the dynamo entry with number 
+of bytes processed. That trigger the lambda again, which can start streaming from the bytes in the item. For each line of the s3 file, write to kinesis.  
+
+**Code**: 
+
+**Pros**: 
+1. Allows you to process files or data that may take much longer than a typical lambda invocation allows. 
+2. Keeps track of the processing state in a dynamo functions
+
+**Cons**: 
+1. It feels a bit hacky, and it certainly is a workaround for lambda and dynamo limitations. But if you can stomach that, its very low on infrastructure and is easy to operate. 
+2. If the work you are doing in the lambda is very CPU intensive, there is a good chance lambda isn't a good fit. 
