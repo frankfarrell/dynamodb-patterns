@@ -36,6 +36,8 @@ Most of the patterns presented below try to use this restricted data model to ou
 **Motivation**: Imagine you have a stream of user events, and you would like to trigger some processing on those events
 when the collection is a certain size or contains certain data. 
 
+**Implementation**: Lambda triggered by dynamo stream that checks the size of list in the item or the presence of certain attributes. 
+
 **Examples**: 
 1. Lets say you collect clicks on your webpage. Clicks are loaded into kinesis, a lambda processes the events and 
 adds the events to a list on a dynamo entry where the hash key is the session. As the user clicks the list grows and the lambda is triggered on each insert. 
@@ -59,3 +61,22 @@ Until Dynamo introduces some sort of conditional streaming logic there is no way
 of the limitations with scan. Perhaps you could get around this with an index. 
 
 ### Periodic Aggregator
+
+**Motivation**: You want to aggregate data that arrives in a certain time period and process that.  
+
+**Implementation**: Store data in buckets where hash key is an identifier for the period (eg YYYYMMDDHH) and the sort key 
+is a unique identifier. Accumulate data in a list. Use a cloudwatch scheduled event to read the lists on the hour. 
+
+**Examples**: 
+1. Your fancy social media app creates notification events when your friends do some pointless thing. Rather than 
+send an email every hour rather than on every event so that they don't start to hate your app. 
+
+**Code**: 
+
+**Pros**: 
+1. Compared to the aggregator pattern, you only have one lambda invocation for all events (although a retry may be necessary if it times out)
+
+**Cons**: 
+1. The maximum item size in DynamoDB is [400 KB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items) so if you plan on aggregating a lot of data
+in your time interval this won't work. In that case you could use a secondary table for the data and this table just to store references to it. 
+
